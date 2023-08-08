@@ -1,0 +1,219 @@
+--Cleaning Data in SQL Queries
+
+SELECT *
+FROM Nashville.Nashville1;
+
+-- Verify Date Format
+
+SELECT SaleDate
+From Nashville.Nashville1;
+
+-- Populate Property Address data
+
+Select PropertyAddress
+From Nashville.Nashville1 
+WHERE PropertyAddress IS NULL;
+
+Select *
+From Nashville.Nashville1 
+WHERE PropertyAddress IS NULL 
+ORDER BY ParcelID;
+
+
+SELECT * 
+FROM Nashville.Nashville1;
+
+
+-- Populate Property Address data, check for nulls
+
+Select A.ParcelID, A.PropertyAddress, B.ParcelID, B.PropertyAddress, IFNULL (A.PropertyAddress,B.PropertyAddress)
+FROM Nashville.Nashville1 as A 
+JOIN Nashville.Nashville1 as B
+	ON A.ParcelID = B.ParcelID
+	AND A.UniqueID_ <> B.UniqueID_
+Where A.PropertyAddress is null;
+
+-- Update - this will match the property addess columns in two of the same datasets, when it finds a null inside the property addess of dataset a, it will replace it with the exact charecters in dataset b.
+
+
+UPDATE Nashville.Nashville1 a
+SET PropertyAddress = (
+  SELECT MAX(b.PropertyAddress)
+  FROM Nashville.Nashville1 b
+WHERE a.ParcelID = b.ParcelID
+    AND a.UniqueID_ <> b.UniqueID_
+    AND b.PropertyAddress IS NOT NULL
+)
+WHERE a.PropertyAddress IS NULL;
+
+
+-- Breaking out Address into Individual Columns (Address, City, State)
+
+Select PropertyAddress
+From Nashville.Nashville1
+
+
+-- seperating the chartecters inside property addess into two columns, 
+-- REGEXP_EXTRACT is used with regular expressions to extract the address components before and after the comma. The regular expression r'^(.*?),' captures everything before the comma, and the regular expression r',(.*)$' captures everything after the comma.
+
+SELECT
+  REGEXP_EXTRACT(PropertyAddress, r'^(.*?),') AS Address,
+  REGEXP_EXTRACT(PropertyAddress, r',(.*)$') AS Address
+FROM
+  Nashville.Nashville1;
+
+-- Create two new columns(PropertySpiltAddress, PropertySplitCity) and add to table
+
+ALTER TABLE Nashville.Nashville1
+ADD COLUMN PropertySplitAddress STRING;
+
+ALTER TABLE Nashville.Nashville1
+ADD COLUMN PropertySplitCity STRING;
+
+-- now we will update the table with the two new columsn
+
+UPDATE Nashville.Nashville1
+SET PropertySplitAddress = SUBSTR(PropertyAddress, 1, STRPOS(PropertyAddress, ',') - 1)
+WHERE PropertyAddress LIKE '%,%';
+
+UPDATE Nashville.Nashville1
+SET PropertySplitCity = SUBSTR(PropertyAddress, STRPOS(PropertyAddress, ',') + 1)
+WHERE PropertyAddress LIKE '%,%';
+
+--now we verify that the two new columns have been added with the correct data points. 
+
+SELECT *
+FROM Nashville.Nashville1
+
+-- now we will seperate the OwnerAdress into seperate columns 
+
+SELECT OwnerAddress
+FROM Nashville.Nashville1
+
+-- seperate address, city, and state
+SELECT 
+  SPLIT(OwnerAddress, ',')[SAFE_OFFSET(0)] AS AddressLine1,
+  SPLIT(OwnerAddress, ',')[SAFE_OFFSET(1)] AS AddressLine2,
+  SPLIT(OwnerAddress, ',')[SAFE_OFFSET(2)] AS AddressLine3
+FROM Nashville.Nashville1;
+
+-- add columns into dataset
+
+ALTER TABLE Nashville.Nashville1
+ADD COLUMN OwnerSplitAddress STRING;
+
+ALTER TABLE Nashville.Nashville1
+ADD COLUMN OwnerSplitCity STRING;
+
+ALTER TABLE Nashville.Nashville1
+ADD COLUMN OwnerSplitState STRING;
+
+-- then update the added columns into dataset
+
+UPDATE Nashville.Nashville1
+SET OwnerSplitAddress = SPLIT(OwnerAddress, ',')[SAFE_OFFSET(0)]
+WHERE PropertyAddress LIKE '%,%';
+
+UPDATE Nashville.Nashville1
+SET OwnerSplitCity = SPLIT(OwnerAddress, ',')[SAFE_OFFSET(1)]
+WHERE PropertyAddress LIKE '%,%';
+
+UPDATE Nashville.Nashville1
+SET OwnerSplitState = SPLIT(OwnerAddress, ',')[SAFE_OFFSET(2)]
+WHERE PropertyAddress LIKE '%,%';
+
+-- then verify all new columns have been added correctly. 
+
+SELECT * 
+FROM Nashville.Nashville1 
+
+-- Change Y and N to Yes and No in "Sold as Vacant" field
+
+
+Select Distinct(SoldAsVacant), Count(SoldAsVacant)
+From Nashville.Nashville1
+Group by SoldAsVacant
+order by 2
+
+Select SoldAsVacant
+, CASE When SoldAsVacant = 'Y' THEN 'Yes'
+	   When SoldAsVacant = 'N' THEN 'No'
+	   ELSE SoldAsVacant
+	   END
+From Nashville.Nashville1
+
+
+UPDATE Nashville.Nashville1
+SET SoldAsVacant = CASE
+    WHEN SoldAsVacant = 'Y' THEN 'Yes'
+    WHEN SoldAsVacant = 'N' THEN 'No'
+    ELSE SoldAsVacant
+END
+WHERE 1=1;
+
+-- remove duplicates 
+-- find duplicates
+SELECT *
+FROM (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY ParcelID, PropertyAddress, SalePrice, SaleDate, LegalReference
+            ORDER BY UniqueID_
+        ) AS row_num
+    FROM Nashville.Nashville1
+) subquery
+ORDER BY ParcelID;
+
+-- delete
+
+DELETE
+FROM Nashville.Nashville1
+WHERE UniqueID_ IN (
+    SELECT UniqueID_
+    FROM (
+        SELECT UniqueID_,
+            ROW_NUMBER() OVER (
+                PARTITION BY ParcelID, PropertyAddress, SalePrice, SaleDate, LegalReference
+                ORDER BY UniqueID_
+            ) AS row_num
+        FROM Nashville.Nashville1
+    ) subquery
+    WHERE row_num > 1
+);
+
+-- verify deletion
+
+SELECT *
+FROM Nashville.Nashville1
+WHERE UniqueID_ IN (
+    SELECT UniqueID_
+    FROM (
+        SELECT UniqueID_,
+            ROW_NUMBER() OVER (
+                PARTITION BY ParcelID, PropertyAddress, SalePrice, SaleDate, LegalReference
+                ORDER BY UniqueID_
+            ) AS row_num
+        FROM Nashville.Nashville1
+    ) subquery
+    WHERE row_num > 1
+);
+
+-- delete unused columns 
+
+
+ALTER TABLE Nashville.Nashville1
+DROP COLUMN OwnerAddress;
+
+ALTER TABLE Nashville.Nashville1
+DROP COLUMN TaxDistrict;
+
+ALTER TABLE Nashville.Nashville1
+DROP COLUMN PropertyAddress;
+
+ALTER TABLE Nashville.Nashville1
+DROP COLUMN SaleDate;
+
+-- verify deletion of columns
+
+SELECT * 
+FROM Nashville.Nashville1
